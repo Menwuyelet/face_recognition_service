@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+src/face_recognition_service/__init__.py
+src/face_recognition_service/crypto.py
+src/face_recognition_service/face_engine.py
+src/face_recognition_service/matcher.py
+src/face_recognition_service/service.py
+src/face_recognition_service.egg-info/PKG-INFO
+src/face_recognition_service.egg-info/SOURCES.txt
+src/face_recognition_service.egg-info/dependency_links.txt
+src/face_recognition_service.egg-info/requires.txt
+src/face_recognition_service.egg-info/top_level.txt
+tests/test_crypto.py
+tests/test_face_engine.py
+tests/test_matcher.py
+tests/test_service.py

@@ -1,0 +1,9 @@
+cryptography>=42.0
+insightface>=0.7
+numpy>=1.24
+onnxruntime>=1.16
+opencv-python-headless>=4.8
+
+[dev]
+pytest>=7.0
+pytest-cov>=4.0

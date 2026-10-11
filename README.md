@@ -1,0 +1,187 @@
+# Face Recognition Service
+
+Standalone Python library for face recognition — extracted from the CPatendance biometric attendance system.
+
+**Zero Django dependencies.** Use it in any Python project.
+
+## Features
+
+| Feature | Class | Description |
+|---|---|---|
+| **Embedding Extraction** | `FaceEngine` | InsightFace `buffalo_l` model — image bytes → 512-d float32 vector |
+| **Matching** | `EmbeddingMatcher` | Cosine similarity comparison with configurable threshold |
+| **Encryption** | `EmbeddingCrypto` | Fernet symmetric encryption for safe storage/transport of embeddings |
+| **Façade** | `FaceRecognitionService` | All-in-one API combining the above three |
+
+## Installation
+
+```bash
+cd face_recognition_service
+pip install -e .
+
+# For development (pytest)
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+### All-in-one (recommended)
+
+```python
+from face_recognition_service import FaceRecognitionService
+
+# Initialize — generates encryption key automatically
+svc = FaceRecognitionService()
+print("Save this key:", svc.crypto.key)
+
+# Or with your own key
+svc = FaceRecognitionService(encryption_key="your-fernet-key-here")
+
+# --- Extract embedding from image ---
+with open("photo.jpg", "rb") as f:
+    embedding = svc.extract_embedding(f.read())
+
+if embedding is not None:
+    print(f"Got {embedding.shape[0]}-d embedding")
+
+# --- Encrypt for storage ---
+encrypted = svc.encrypt_embedding(embedding)
+
+# --- Decrypt later ---
+restored = svc.decrypt_embedding(encrypted)
+
+# --- Match two embeddings ---
+is_match, score = svc.match(embedding_a, embedding_b)
+print(f"Match: {is_match}, Similarity: {score:.4f}")
+
+# --- One-shot: extract & encrypt ---
+encrypted = svc.extract_and_encrypt(image_bytes)
+
+# --- Find best match from a gallery ---
+identity, score = svc.find_best_match(probe_embedding, {
+    "alice": alice_embedding,
+    "bob": bob_embedding,
+})
+```
+
+### Individual components
+
+```python
+from face_recognition_service import FaceEngine, EmbeddingMatcher, EmbeddingCrypto
+
+# Engine only
+engine = FaceEngine(model_name="buffalo_l", ctx_id=0)
+embedding = engine.extract(image_bytes)
+all_embeddings = engine.extract_all(group_photo_bytes)
+
+# Matcher only
+matcher = EmbeddingMatcher(threshold=0.6)
+is_match, sim = matcher.match(emb_a, emb_b)
+best_id, sim = matcher.find_best_match(probe, gallery_dict)
+
+# Crypto only
+crypto = EmbeddingCrypto()  # auto-generates key
+encrypted = crypto.encrypt(embedding)
+restored = crypto.decrypt(encrypted)
+```
+
+## API Reference
+
+### `FaceRecognitionService(encryption_key=None, model_name="buffalo_l", ctx_id=0, det_size=(320,320), match_threshold=0.6)`
+
+| Method | Returns | Description |
+|---|---|---|
+| `extract_embedding(image_bytes)` | `ndarray \| None` | Extract 512-d embedding from image |
+| `extract_all_embeddings(image_bytes)` | `list[ndarray]` | Extract all face embeddings from image |
+| `encrypt_embedding(embedding)` | `bytes` | Fernet-encrypt an embedding |
+| `decrypt_embedding(ciphertext)` | `ndarray` | Decrypt back to embedding |
+| `match(emb_a, emb_b, threshold=None)` | `(bool, float)` | Compare two embeddings |
+| `find_best_match(probe, gallery, threshold=None)` | `(str\|None, float)` | Best match from gallery dict |
+| `extract_and_encrypt(image_bytes)` | `bytes \| None` | Extract + encrypt pipeline |
+| `decrypt_and_match(ct_a, ct_b, threshold=None)` | `(bool, float)` | Decrypt + compare pipeline |
+
+### `FaceEngine(model_name="buffalo_l", ctx_id=0, det_size=(320,320))`
+
+| Method | Returns | Description |
+|---|---|---|
+| `extract(image_bytes)` | `ndarray \| None` | First face embedding |
+| `extract_all(image_bytes)` | `list[ndarray]` | All face embeddings |
+| `initialize()` | `None` | Eagerly load the model |
+
+### `EmbeddingMatcher(threshold=0.6)`
+
+| Method | Returns | Description |
+|---|---|---|
+| `match(emb_a, emb_b, threshold=None)` | `(bool, float)` | Cosine similarity comparison |
+| `find_best_match(probe, gallery, threshold=None)` | `(str\|None, float)` | Best identity from gallery |
+
+### `EmbeddingCrypto(key=None)`
+
+| Method | Returns | Description |
+|---|---|---|
+| `encrypt(embedding)` | `bytes` | Encrypt embedding to ciphertext |
+| `decrypt(ciphertext)` | `ndarray` | Decrypt ciphertext to embedding |
+| `generate_key()` | `str` | Static method — generate new Fernet key |
+| `.key` | `str` | Property — current key as string |
+
+## Tuning the Threshold
+
+The `threshold` controls how similar two faces must be to count as a match (cosine similarity, range -1 to 1).
+
+| Threshold | Behavior | Use case |
+|---|---|---|
+| **0.4** | Lenient — more matches, more false positives | Low-security check-ins |
+| **0.6** | Default — balanced (used by CPatendance) | General attendance |
+| **0.7** | Strict — fewer false positives, may miss some | Secure access control |
+| **0.8+** | Very strict — near-identical faces only | High-security environments |
+
+### Set globally at init
+
+```python
+svc = FaceRecognitionService(match_threshold=0.7)  # all calls use 0.7
+```
+
+### Override per call
+
+```python
+# Use the global threshold
+is_match, score = svc.match(emb_a, emb_b)
+
+# Override for this one call
+is_match, score = svc.match(emb_a, emb_b, threshold=0.5)
+
+# Same for gallery matching
+identity, score = svc.find_best_match(probe, gallery, threshold=0.75)
+```
+
+> **Tip:** Start with the default `0.6`. If you're getting false positives (wrong person matched), raise it. If legitimate users aren't being recognized, lower it.
+
+## Running Tests
+
+```bash
+cd face_recognition_service
+pip install -e ".[dev]"
+pytest -v
+```
+
+Tests mock InsightFace, so no model download is needed.
+
+## Project Structure
+
+```
+face_recognition_service/
+├── pyproject.toml
+├── README.md
+├── src/
+│   └── face_recognition_service/
+│       ├── __init__.py          # Package exports
+│       ├── face_engine.py       # InsightFace embedding extraction
+│       ├── matcher.py           # Cosine similarity matching
+│       ├── crypto.py            # Fernet encryption/decryption
+│       └── service.py           # High-level façade
+└── tests/
+    ├── test_face_engine.py
+    ├── test_matcher.py
+    ├── test_crypto.py
+    └── test_service.py
+```
